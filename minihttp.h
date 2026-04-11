@@ -363,6 +363,9 @@ Server::Server(const std::string& ipAddress, int port) {
         if (req.method == HttpMethod::OPTIONS) {
             res.status = 204;
             res.body = "";
+            res.headers["Access-Control-Allow-Origin"] = "*";
+            res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+            res.headers["Access-Control-Allow-Headers"] = "Content-Type";
             return false;
         }
         return true;
@@ -683,6 +686,8 @@ static bool parseHttpRequest(const char* buffer, size_t length, Request& req) {
         req.method = HttpMethod::DEL;
     } else if (methodStr == "PATCH") {
         req.method = HttpMethod::PATCH;
+    } else if (methodStr == "OPTIONS") {
+        req.method = HttpMethod::OPTIONS;
     } else {
         req.method = HttpMethod::UNKNOWN;
     }
