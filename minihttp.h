@@ -425,7 +425,7 @@ bool Server::start() {
     }
     
 
-#ifdef WIN_32
+#ifdef _WIN32
     char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) == 0) {
         struct hostent* host = gethostbyname(hostname);
