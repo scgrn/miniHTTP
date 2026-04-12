@@ -6,9 +6,13 @@
 #include <iomanip>
 #include <sstream>
 
-struct Context {
+struct SharedData {
     std::mutex messageMutex;
     std::vector<std::string> messages;
+};
+
+struct Context {
+    std::shared_ptr<SharedData> shared;
 };
 
 static std::string getCurrentTimestamp() {
@@ -36,12 +40,14 @@ static std::string formatMessage(const std::string& username, const std::string&
 int main(int, char**) {
     std::cout << "Enter \"quit\" to shutdown server and exit.\n\n";
 
+    auto shared = std::make_shared<SharedData>();
+
     Server server("0.0.0.0", 7815);
     server.enableCORS();
 
     server.setContextFactory(
-        []() -> void* {
-            return new Context();
+        [shared]() -> void* {
+            return new Context{shared};
         },
         [](void* ptr) {
             delete static_cast<Context*>(ptr);
@@ -57,11 +63,11 @@ int main(int, char**) {
         Context* ctx = static_cast<Context*>(ptr);
         std::string history;
         {
-            std::lock_guard<std::mutex> lock(ctx->messageMutex);
-            if (ctx->messages.empty()) {
+            std::lock_guard<std::mutex> lock(ctx->shared->messageMutex);
+            if (ctx->shared->messages.empty()) {
                 history = "data: {\"type\":\"connected\"}\n\n";
             } else {
-                for (const auto& msg : ctx->messages) {
+                for (const auto& msg : ctx->shared->messages) {
                     history += "data: " + msg + "\n\n";
                 }
             }
@@ -102,8 +108,8 @@ int main(int, char**) {
         std::string formatted = formatMessage(username, text);
 
         {
-            std::lock_guard<std::mutex> lock(ctx->messageMutex);
-            ctx->messages.push_back(formatted);
+            std::lock_guard<std::mutex> lock(ctx->shared->messageMutex);
+            ctx->shared->messages.push_back(formatted);
         }
 
         server.broadcast(formatted);
