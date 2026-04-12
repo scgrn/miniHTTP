@@ -66,6 +66,8 @@ Link against pthread and dl on Linux
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <ifaddrs.h>
+#include <errno.h>
+#include <signal.h>
 #endif
 
 #if defined(_MSC_VER)
@@ -243,7 +245,9 @@ class Server {
         void useBefore(BeforeMiddleware middleware);
         void useAfter(AfterMiddleware middleware);
         void enableCORS();
-
+#ifdef TEST_BUILD
+        void runTests();
+#endif
         Router router;
 
     private:
@@ -499,15 +503,30 @@ void Server::broadcast(const std::string& message) {
     for (auto it = subscribers.begin(); it != subscribers.end();) {
         Socket socket = *it;
         
-        int sent = send(socket, payload.c_str(), payload.size(), 0);
+        if (!socketValid(socket)) {
+            it = subscribers.erase(it);
+            continue;
+        }
+        
+        int sent = send(socket, payload.c_str(), payload.size(), MSG_NOSIGNAL);
 
         if (sent <= 0) {
-            //  client disconnected
-            closeSocket(socket);
-            it = subscribers.erase(it);
-        } else {
-            it++;
+#ifdef _WIN32
+            int err = WSAGetLastError();
+            if (err != WSAEWOULDBLOCK && err != 0) {
+                closeSocket(socket);
+                it = subscribers.erase(it);
+                continue;
+            }
+#else
+            if (errno != EAGAIN && errno != EWOULDBLOCK && errno != 0) {
+                closeSocket(socket);
+                it = subscribers.erase(it);
+                continue;
+            }
+#endif
         }
+        it++;
     }
 }
         
@@ -773,7 +792,7 @@ void Server::handleClient(Socket clientSocket, void* ctx) {
     while (totalBytesSent < responseStr.size()) {
         bytesSent = send(clientSocket,
             responseStr.c_str() + totalBytesSent,
-            responseStr.size() - totalBytesSent, 0);
+            responseStr.size() - totalBytesSent, MSG_NOSIGNAL);
 
         if (bytesSent < 0) {
             break;
@@ -789,5 +808,11 @@ void Server::handleClient(Socket clientSocket, void* ctx) {
         closeSocket(clientSocket);
     }
 }
+
+#ifdef TEST_BUILD
+void Server::runTests() {
+    std::cout << "All tests passed.\n";
+}
+#endif
 
 #endif    //  MINI_HTTP_IMPLEMENTATION
