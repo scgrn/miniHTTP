@@ -245,12 +245,12 @@ class Server {
         void useBefore(BeforeMiddleware middleware);
         void useAfter(AfterMiddleware middleware);
         void enableCORS();
-#ifdef TEST_BUILD
-        void runTests();
-#endif
+
         Router router;
 
+#ifndef TEST_BUILD
     private:
+#endif
         void error(const std::string& message, bool fatal = false);
         void acceptLoop();
         void worker();
@@ -347,9 +347,7 @@ Server::Server(const std::string& ipAddress, int port) {
     this->port = port;
 
     threadCount = std::thread::hardware_concurrency();
-    if (threadCount > 0) {
-        std::cout << "Number of logical cores available: " << threadCount << std::endl;
-    } else {
+    if (threadCount <= 0) {
         std::cout << "Could not determine core count, defaulting to one thread." << std::endl;
         threadCount = 1;
     }
@@ -377,9 +375,6 @@ Server::Server(const std::string& ipAddress, int port) {
 
     //  add default routes
     router.add(HttpMethod::GET, "/subscribe", [](const Request& req, void* ctx) -> Response {
-        std::cout << ctx << std::endl;
-        std::cout << req.body << std::endl;
-
         return {200, "text/event-stream", "", true};
     });
 }
@@ -464,6 +459,7 @@ bool Server::start() {
 #endif
 
     std::cout << "Listening on port " << ntohs(socketAddress.sin_port) << "\n";
+    std::cout << "Thread count: " << threadCount << std::endl;
 
     //    initialize worker threads
     workers.clear();
@@ -808,11 +804,5 @@ void Server::handleClient(Socket clientSocket, void* ctx) {
         closeSocket(clientSocket);
     }
 }
-
-#ifdef TEST_BUILD
-void Server::runTests() {
-    std::cout << "All tests passed.\n";
-}
-#endif
 
 #endif    //  MINI_HTTP_IMPLEMENTATION
