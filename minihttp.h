@@ -79,9 +79,11 @@ Link against pthread and dl on Linux
 #endif
 
 #ifdef _WIN32
+#define SEND_FLAGS 0
 typedef SOCKET Socket;
 typedef int socklen_t;
 #else
+#define SEND_FLAGS MSG_NOSIGNAL
 typedef int Socket;
 #endif
 
@@ -504,7 +506,7 @@ void Server::broadcast(const std::string& message) {
             continue;
         }
         
-        int sent = send(socket, payload.c_str(), payload.size(), MSG_NOSIGNAL);
+        int sent = send(socket, payload.c_str(), payload.size(), SEND_FLAGS);
 
         if (sent <= 0) {
 #ifdef _WIN32
@@ -788,7 +790,7 @@ void Server::handleClient(Socket clientSocket, void* ctx) {
     while (totalBytesSent < responseStr.size()) {
         bytesSent = send(clientSocket,
             responseStr.c_str() + totalBytesSent,
-            responseStr.size() - totalBytesSent, MSG_NOSIGNAL);
+            responseStr.size() - totalBytesSent, SEND_FLAGS);
 
         if (bytesSent < 0) {
             break;
