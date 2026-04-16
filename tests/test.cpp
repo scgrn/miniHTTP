@@ -1,3 +1,4 @@
+#define MINI_HTTP_TEST_BUILD
 #define MINI_HTTP_IMPLEMENTATION
 #include "../minihttp.h"
 
@@ -165,6 +166,67 @@ void testParseHttpRequest() {
     assert(req.headers["Host"] == "localhost");
 }
 
+void testPathParamSingle() {
+    Router router;
+
+    router.add(HttpMethod::GET, "user/:id", [](Request& req, void*) {
+        return Response{200, "text/plain", req.pathParams["id"]};
+    });
+
+    Request req;
+    req.method = HttpMethod::GET;
+    req.path = "/user/412";
+
+    Response res = router.route(req, nullptr);
+
+    assert(res.status == 200);
+    assert(res.body == "412");
+}
+
+void testPathParamMultiple() {
+    Router router;
+
+    router.add(HttpMethod::GET, "user/:userId/post/:postId", [](Request& req, void*) {
+        return Response{200, "text/plain", req.pathParams["userId"] + "," + req.pathParams["postId"]};
+    });
+
+    Request req;
+    req.method = HttpMethod::GET;
+    req.path = "/user/132/post/213";
+
+    Response res = router.route(req, nullptr);
+
+    assert(res.status == 200);
+    assert(res.body == "132,213");
+}
+
+void testQueryParamSingle() {
+    const char* raw =
+        "GET /api?name=Alice HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "\r\n";
+
+    Request req;
+
+    assert(parseHttpRequest(raw, strlen(raw), req));
+    assert(req.path == "/api");
+    assert(req.queryParams["name"] == "Alice");
+}
+
+void testQueryParamMultiple() {
+    const char* raw =
+        "GET /api?user=Ringo&submarine=YELLOW HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "\r\n";
+
+    Request req;
+
+    assert(parseHttpRequest(raw, strlen(raw), req));
+    assert(req.path == "/api");
+    assert(req.queryParams["user"] == "Ringo");
+    assert(req.queryParams["submarine"] == "YELLOW");
+}
+
 int main(int argc, char* argv[]) {
     testResonseToString();
     testRouterBasic();
@@ -175,6 +237,10 @@ int main(int argc, char* argv[]) {
     testEnableCors();
     testSubscribeResponse();
     testParseHttpRequest();
+    testPathParamSingle();
+    testPathParamMultiple();
+    testQueryParamSingle();
+    testQueryParamMultiple();
 
     std::cout << "All tests passed.\n";
 }

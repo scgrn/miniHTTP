@@ -193,6 +193,8 @@ struct Request {
     std::string version;
     std::unordered_map<std::string, std::string> headers;
     std::string body;
+    std::unordered_map<std::string, std::string> pathParams;
+    std::unordered_map<std::string, std::string> queryParams;
 };
 
 struct Response {
@@ -207,10 +209,10 @@ struct Response {
 };
 
 //  BeforeMiddleware can short circuit a request by returning false
-using BeforeMiddleware = std::function<bool(const Request&, Response&, void*)>;
-using AfterMiddleware = std::function<void(const Request&, Response&, void*)>;
+using BeforeMiddleware = std::function<bool(Request&, Response&, void*)>;
+using AfterMiddleware = std::function<void(Request&, Response&, void*)>;
 
-using Handler = std::function<Response(const Request&, void*)>;
+using Handler = std::function<Response(Request&, void*)>;
 using ErrorHandler = std::function<void(const std::string& message, bool fatal)>;
 
 class Router {
@@ -219,12 +221,47 @@ class Router {
             routes[method][path] = handler;
         }
     
-        Response route(const Request& req, void* ctx) const {
+        Response route(Request& req, void* ctx) const {
             auto m = routes.find(req.method);
             if (m != routes.end()) {
                 auto p = m->second.find(req.path);
                 if (p != m->second.end()) {
                     return p->second(req, ctx);
+                }
+
+                for (const auto& routePair : m->second) {
+                    const std::string& pattern = routePair.first;
+                    std::vector<std::string> patternSegments;
+                    std::vector<std::string> pathSegments;
+                    
+                    std::istringstream patStream(pattern);
+                    std::string seg;
+                    while (std::getline(patStream, seg, '/')) {
+                        if (!seg.empty()) patternSegments.push_back(seg);
+                    }
+                    
+                    std::istringstream pathStream(req.path);
+                    while (std::getline(pathStream, seg, '/')) {
+                        if (!seg.empty()) pathSegments.push_back(seg);
+                    }
+
+                    if (patternSegments.size() != pathSegments.size()) {
+                        continue;
+                    }
+
+                    bool match = true;
+                    for (size_t i = 0; i < patternSegments.size(); i++) {
+                        if (patternSegments[i][0] == ':') {
+                            req.pathParams[patternSegments[i].substr(1)] = pathSegments[i];
+                        } else if (patternSegments[i] != pathSegments[i]) {
+                            match = false;
+                            break;
+                        }
+                    }
+
+                    if (match) {
+                        return routePair.second(req, ctx);
+                    }
                 }
             }
     
@@ -250,7 +287,7 @@ class Server {
 
         Router router;
 
-#ifndef TEST_BUILD
+#ifndef MINI_HTTP_TEST_BUILD
     private:
 #endif
         void error(const std::string& message, bool fatal = false);
@@ -688,10 +725,34 @@ static bool parseHttpRequest(const char* buffer, size_t length, Request& req) {
 
     std::istringstream startLine(line);
 
-    std::string methodStr;
+std::string methodStr;
     startLine >> methodStr;
     startLine >> req.path;
     startLine >> req.version;
+
+    size_t queryPos = req.path.find('?');
+    if (queryPos != std::string::npos) {
+        std::string queryString = req.path.substr(queryPos + 1);
+        req.path = req.path.substr(0, queryPos);
+
+        size_t start = 0;
+        while (start < queryString.size()) {
+            size_t amp = queryString.find('&', start);
+            std::string pair = (amp == std::string::npos) 
+                ? queryString.substr(start) 
+                : queryString.substr(start, amp - start);
+            
+            size_t eq = pair.find('=');
+            if (eq != std::string::npos) {
+                std::string key = pair.substr(0, eq);
+                std::string value = pair.substr(eq + 1);
+                req.queryParams[key] = value;
+            }
+
+            if (amp == std::string::npos) break;
+            start = amp + 1;
+        }
+    }
 
     if (methodStr == "GET") {
         req.method = HttpMethod::GET;
